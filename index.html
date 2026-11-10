@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      // Gracefully silence expected HMR WebSocket errors in cloud iframe environment
+      (function() {
+        if (typeof window !== 'undefined') {
+          class CleanHmrWebSocket extends EventTarget {
+            constructor(url, protocols) {
+              super();
+              this.url = String(url || '');
+              this.protocol = typeof protocols === 'string' ? protocols : (Array.isArray(protocols) ? protocols[0] || '' : '');
+              this.CONNECTING = 0;
+              this.OPEN = 1;
+              this.CLOSING = 2;
+              this.CLOSED = 3;
+              this.readyState = 1; // WebSocket.OPEN (always ready)
+              this.bufferedAmount = 0;
+              this.extensions = '';
+              this.binaryType = 'blob';
+              this.onopen = null;
+              this.onclose = null;
+              this.onerror = null;
+              this.onmessage = null;
+
+              if (typeof queueMicrotask === 'function') {
+                queueMicrotask(() => {
+                  const ev = new Event('open');
+                  this.dispatchEvent(ev);
+                  if (typeof this.onopen === 'function') {
+                    try { this.onopen(ev); } catch (e) {}
+                  }
+                });
+              } else {
+                Promise.resolve().then(() => {
+                  const ev = new Event('open');
+                  this.dispatchEvent(ev);
+                  if (typeof this.onopen === 'function') {
+                    try { this.onopen(ev); } catch (e) {}
+                  }
+                });
+              }
+            }
+            send() {}
+            close() {}
+          }
+          CleanHmrWebSocket.CONNECTING = 0;
+          CleanHmrWebSocket.OPEN = 1;
+          CleanHmrWebSocket.CLOSING = 2;
+          CleanHmrWebSocket.CLOSED = 3;
+
+          CleanHmrWebSocket.prototype.CONNECTING = 0;
+          CleanHmrWebSocket.prototype.OPEN = 1;
+          CleanHmrWebSocket.prototype.CLOSING = 2;
+          CleanHmrWebSocket.prototype.CLOSED = 3;
+
+          window.WebSocket = CleanHmrWebSocket;
+        }
+
+        var originalConsoleError = console.error;
+        console.error = function() {
+          var args = Array.prototype.slice.call(arguments);
+          var combinedText = args
+            .map(function(arg) {
+              if (!arg) return '';
+              return typeof arg === 'string' ? arg : (arg.message || String(arg));
+            })
+            .join(' ');
+
+          if (
+            combinedText.indexOf('WebSocket') !== -1 ||
+            combinedText.indexOf('closed without opened') !== -1 ||
+            combinedText.indexOf('failed to connect to websocket') !== -1
+          ) {
+            return;
+          }
+          return originalConsoleError.apply(console, args);
+        };
+
+        window.addEventListener('error', function (e) {
+          var msg = (e && (e.message || (e.error && e.error.message) || String(e))) || '';
+          if (
+            msg.indexOf('WebSocket') !== -1 ||
+            msg.indexOf('closed without opened') !== -1
+          ) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function (e) {
+          var msg = (e && e.reason && (e.reason.message || String(e.reason))) || '';
+          if (
+            msg.indexOf('WebSocket') !== -1 ||
+            msg.indexOf('closed without opened') !== -1
+          ) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Solomon Building Materials - Sales, Purchases & Bank Tracker</title>
+    <meta name="description" content="Audit-proof Android bookkeeping app to track daily sales, purchase items, and reconcile bank balances for error-free tax audits." />
+    <meta property="og:title" content="Solomon Building Materials - Sales, Purchases & Bank Tracker" />
+    <meta property="og:description" content="Audit-proof Android bookkeeping app to track daily sales, purchase items, and reconcile bank balances for error-free tax audits." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#F8F7F4" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="TaxGuard" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=IBM+Plex+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  </head>
+  <body class="bg-[#F8F7F4] text-stone-900 antialiased selection:bg-orange-700 selection:text-white overscroll-none">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
