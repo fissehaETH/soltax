@@ -209,7 +209,7 @@ export const LocalStorageSyncModal: React.FC<LocalStorageSyncModalProps> = ({
               <div className="flex items-center justify-between text-xs font-bold text-stone-600 dark:text-stone-400 uppercase tracking-wider">
                 <span>Local Device Storage Stats</span>
                 <span className="text-amber-700 dark:text-amber-400 font-mono">
-                  {stats.formattedSize} ({stats.storageUsagePercent}% of quota)
+                  ~{stats.estimatedSizeKb} KB
                 </span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

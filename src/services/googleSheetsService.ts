@@ -1657,3 +1657,13 @@ export async function fetchDataFromGoogleSheets(options: {
   return parsed;
 }
 
+export async function fetchGoogleSheetsData(
+  urlOrOptions: string | { appsScriptUrl?: string; settings?: Partial<TaxSettings> },
+  settings?: Partial<TaxSettings>
+): Promise<GoogleSheetsImportData> {
+  if (typeof urlOrOptions === 'string') {
+    return fetchDataFromGoogleSheets({ appsScriptUrl: urlOrOptions, settings });
+  }
+  return fetchDataFromGoogleSheets(urlOrOptions);
+}
+

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ensureIsoTimestamp } from './utils/dataMappers';
 
 import {
   BankAccount,
@@ -661,44 +662,8 @@ export default function App() {
 
     // 4. Online Firestore write if user logged in
     await safeWrite(
-      async () => {
-        await setDoc(doc(db, 'sales', saleId), salePayload);
-        if (transferAmount > 0 && newSale.bankAccountId) {
-          const targetAcc = bankAccounts.find((a) => a.id === newSale.bankAccountId);
-          if (targetAcc) {
-            await setDoc(
-              doc(db, 'bankAccounts', targetAcc.id),
-              FirestoreMappers.bankAccountToFirestore(targetAcc, user!.uid),
-              { merge: true }
-            );
-            await updateDoc(doc(db, 'bankAccounts', targetAcc.id), {
-              currentBalance: increment(transferAmount),
-              updatedAt: clientTimestamp(),
-              versionTimestamp: Date.now(),
-              lastModifiedByDeviceId: getDeviceId(),
-            });
-            const txId = sanitizeId(`btx-sale-${saleId}`);
-            await setDoc(doc(db, 'bankTransactions', txId), {
-              id: txId,
-              ownerId: user!.uid,
-              bankAccountId: targetAcc.id,
-              date: newSale.date.slice(0, 30),
-              description: `Daily Bank Transfer Sales (${newSale.date}) — Ref ${newSale.receiptNumber}`.slice(0, 500),
-              type: 'credit',
-              amount: transferAmount,
-              category: 'sale_deposit',
-              referenceId: saleId,
-              isReconciled: true,
-              notes: `Auto-reconciled with Daily Sales ${newSale.receiptNumber} (Transfer portion)`.slice(0, 1000),
-              createdAt: clientTimestamp(),
-              updatedAt: clientTimestamp(),
-              versionTimestamp: Date.now(),
-              lastModifiedByDeviceId: getDeviceId(),
-            });
-          }
-        }
-      },
-      OperationType.CREATE,
+      undefined,
+      'write',
       `sales/${saleId}`,
       syncId,
       user?.uid,
@@ -870,65 +835,8 @@ export default function App() {
 
     // 4. Online Firestore write
     await safeWrite(
-      async () => {
-        await updateDoc(doc(db, 'sales', saleId), updatePayload);
-        if (oldTransfer > 0 && oldBankId) {
-          const oldAcc = bankAccounts.find((a) => a.id === oldBankId);
-          if (oldAcc && oldBankId !== newBankId) {
-            await updateDoc(doc(db, 'bankAccounts', oldAcc.id), {
-              currentBalance: increment(-oldTransfer),
-              updatedAt: clientTimestamp(),
-            });
-          }
-        }
-        if (newBankId) {
-          const targetAcc = bankAccounts.find((a) => a.id === newBankId);
-          if (targetAcc) {
-            const delta =
-              oldBankId === newBankId ? transferAmount - oldTransfer : transferAmount;
-            if (delta !== 0) {
-              await updateDoc(doc(db, 'bankAccounts', targetAcc.id), {
-                currentBalance: increment(delta),
-                updatedAt: clientTimestamp(),
-              });
-            }
-          }
-        }
-
-        const txId = sanitizeId(`btx-sale-${saleId}`);
-        const existingAutoTx = bankTransactions.find((t) => t.id === txId || t.referenceId === saleId);
-        if (transferAmount > 0 && newBankId) {
-          if (existingAutoTx) {
-            await updateDoc(doc(db, 'bankTransactions', txId), {
-              bankAccountId: newBankId,
-              date: updatedSale.date.slice(0, 30),
-              description: `Daily Bank Transfer Sales (${updatedSale.date}) — Ref ${updatedSale.receiptNumber}`.slice(0, 500),
-              amount: transferAmount,
-              notes: `Auto-reconciled with Daily Sales ${updatedSale.receiptNumber} (Transfer portion)`.slice(0, 1000),
-              updatedAt: clientTimestamp(),
-            });
-          } else {
-            await setDoc(doc(db, 'bankTransactions', txId), {
-              id: txId,
-              ownerId: user!.uid,
-              bankAccountId: newBankId,
-              date: updatedSale.date.slice(0, 30),
-              description: `Daily Bank Transfer Sales (${updatedSale.date}) — Ref ${updatedSale.receiptNumber}`.slice(0, 500),
-              type: 'credit',
-              amount: transferAmount,
-              category: 'sale_deposit',
-              referenceId: saleId,
-              isReconciled: true,
-              notes: `Auto-reconciled with Daily Sales ${updatedSale.receiptNumber} (Transfer portion)`.slice(0, 1000),
-              createdAt: clientTimestamp(),
-              updatedAt: clientTimestamp(),
-            });
-          }
-        } else if (existingAutoTx) {
-          await deleteDoc(doc(db, 'bankTransactions', txId));
-        }
-      },
-      OperationType.UPDATE,
+      undefined,
+      'write',
       `sales/${saleId}`,
       syncId,
       user?.uid,
@@ -984,25 +892,8 @@ export default function App() {
     }
 
     await safeWrite(
-      async () => {
-        await deleteDoc(doc(db, 'sales', id));
-        if (oldSale) {
-          const oldTransfer = getSaleBankTransferAmount(oldSale);
-          const oldBankId = oldSale.bankAccountId || '';
-          if (oldTransfer > 0 && oldBankId) {
-            const acc = bankAccounts.find((a) => a.id === oldBankId);
-            if (acc) {
-              await updateDoc(doc(db, 'bankAccounts', acc.id), {
-                currentBalance: increment(-oldTransfer),
-                updatedAt: clientTimestamp(),
-              });
-            }
-          }
-          const txId = sanitizeId(`btx-sale-${oldSale.id}`);
-          await deleteDoc(doc(db, 'bankTransactions', txId));
-        }
-      },
-      OperationType.DELETE,
+      undefined,
+      'write',
       `sales/${id}`,
       syncId,
       user?.uid
@@ -1172,46 +1063,8 @@ export default function App() {
 
     // 4. Online Firestore write if user logged in
     await safeWrite(
-      async () => {
-        await setDoc(doc(db, 'purchases', purchaseId), purchasePayload);
-        if (bankAmount > 0 && targetBankAccountId) {
-          const targetAcc =
-            bankAccounts.find((a) => a.id === targetBankAccountId) ||
-            currentBankAccounts.find((a) => a.id === targetBankAccountId);
-          if (targetAcc) {
-            await setDoc(
-              doc(db, 'bankAccounts', targetAcc.id),
-              FirestoreMappers.bankAccountToFirestore(targetAcc, user!.uid),
-              { merge: true }
-            );
-            await updateDoc(doc(db, 'bankAccounts', targetAcc.id), {
-              currentBalance: increment(-bankAmount),
-              updatedAt: clientTimestamp(),
-              versionTimestamp: Date.now(),
-              lastModifiedByDeviceId: getDeviceId(),
-            });
-            const txId = sanitizeId(`btx-pur-${purchaseId}`);
-            await setDoc(doc(db, 'bankTransactions', txId), {
-              id: txId,
-              ownerId: user!.uid,
-              bankAccountId: targetAcc.id,
-              date: newPurchase.date.slice(0, 30),
-              description: `Supplier Invoice ${newPurchase.invoiceNumber}: ${newPurchase.vendorName}${cashAmount > 0 ? ' (Bank Portion)' : ''}`.slice(0, 500),
-              type: 'debit',
-              amount: bankAmount,
-              category: 'vendor_payout',
-              referenceId: purchaseId,
-              isReconciled: true,
-              notes: `Tied to verified invoice ${newPurchase.invoiceNumber}`.slice(0, 1000),
-              createdAt: clientTimestamp(),
-              updatedAt: clientTimestamp(),
-              versionTimestamp: Date.now(),
-              lastModifiedByDeviceId: getDeviceId(),
-            });
-          }
-        }
-      },
-      OperationType.CREATE,
+      undefined,
+      'write',
       `purchases/${purchaseId}`,
       syncId,
       user?.uid,
@@ -1357,68 +1210,8 @@ export default function App() {
 
     // 4. Online Firestore write
     await safeWrite(
-      async () => {
-        await updateDoc(doc(db, 'purchases', purchaseId), updatePayload);
-        if (oldBankId && oldBankId !== newBankId) {
-          const oldAcc = bankAccounts.find((a) => a.id === oldBankId);
-          if (oldAcc) {
-            await updateDoc(doc(db, 'bankAccounts', oldAcc.id), {
-              currentBalance: increment(oldBankAmount),
-              updatedAt: clientTimestamp(),
-            });
-          }
-        }
-        if (newBankId) {
-          const targetAcc = bankAccounts.find((a) => a.id === newBankId);
-          if (targetAcc) {
-            await setDoc(
-              doc(db, 'bankAccounts', targetAcc.id),
-              FirestoreMappers.bankAccountToFirestore(targetAcc, user!.uid),
-              { merge: true }
-            );
-            const delta = oldBankId === newBankId ? newBankAmount - oldBankAmount : newBankAmount;
-            if (delta !== 0) {
-              await updateDoc(doc(db, 'bankAccounts', targetAcc.id), {
-                currentBalance: increment(-delta),
-                updatedAt: clientTimestamp(),
-              });
-            }
-          }
-        }
-
-        const existingAutoTx = bankTransactions.find((t) => t.id === txId);
-        if (newBankId && newBankAmount > 0) {
-          if (existingAutoTx) {
-            await updateDoc(doc(db, 'bankTransactions', txId), {
-              bankAccountId: newBankId,
-              date: updatedPurchase.date.slice(0, 30),
-              description: `Supplier Invoice ${updatedPurchase.invoiceNumber}: ${updatedPurchase.vendorName}${newCashAmount > 0 ? ' (Bank Portion)' : ''}`.slice(0, 500),
-              amount: newBankAmount,
-              notes: `Tied to verified invoice ${updatedPurchase.invoiceNumber}`.slice(0, 1000),
-              updatedAt: clientTimestamp(),
-            });
-          } else {
-            await setDoc(doc(db, 'bankTransactions', txId), {
-              id: txId,
-              ownerId: user!.uid,
-              bankAccountId: newBankId,
-              date: updatedPurchase.date.slice(0, 30),
-              description: `Supplier Invoice ${updatedPurchase.invoiceNumber}: ${updatedPurchase.vendorName}${newCashAmount > 0 ? ' (Bank Portion)' : ''}`.slice(0, 500),
-              type: 'debit',
-              amount: newBankAmount,
-              category: 'vendor_payout',
-              referenceId: purchaseId,
-              isReconciled: true,
-              notes: `Tied to verified invoice ${updatedPurchase.invoiceNumber}`.slice(0, 1000),
-              createdAt: clientTimestamp(),
-              updatedAt: clientTimestamp(),
-            });
-          }
-        } else if (existingAutoTx) {
-          await deleteDoc(doc(db, 'bankTransactions', txId));
-        }
-      },
-      OperationType.UPDATE,
+      undefined,
+      'write',
       `purchases/${purchaseId}`,
       syncId,
       user?.uid,
@@ -1468,25 +1261,8 @@ export default function App() {
     }
 
     await safeWrite(
-      async () => {
-        await deleteDoc(doc(db, 'purchases', id));
-        if (oldPurchase) {
-          const oldBankAmount = getPurchaseBankAmount(oldPurchase);
-          const oldBankId = oldPurchase.bankAccountId || '';
-          if (oldBankAmount > 0 && oldBankId) {
-            const acc = bankAccounts.find((a) => a.id === oldBankId);
-            if (acc) {
-              await updateDoc(doc(db, 'bankAccounts', acc.id), {
-                currentBalance: increment(oldBankAmount),
-                updatedAt: clientTimestamp(),
-              });
-            }
-            const txId = sanitizeId(`btx-pur-${oldPurchase.id}`);
-            await deleteDoc(doc(db, 'bankTransactions', txId));
-          }
-        }
-      },
-      OperationType.DELETE,
+      undefined,
+      'write',
       `purchases/${id}`,
       syncId,
       user?.uid
@@ -1628,49 +1404,8 @@ export default function App() {
 
     // 4. Online Firestore write
     await safeWrite(
-      async () => {
-        if (existingClose) {
-          await updateDoc(doc(db, 'dailyCloses', closeId), closePayload);
-        } else {
-          await setDoc(doc(db, 'dailyCloses', closeId), closePayload);
-        }
-        if (closeDeposit > 0 && primaryAcc) {
-          await setDoc(
-            doc(db, 'bankAccounts', primaryAcc.id),
-            FirestoreMappers.bankAccountToFirestore(primaryAcc, user!.uid),
-            { merge: true }
-          );
-          const delta = closeDeposit - oldDeposit;
-          if (delta !== 0) {
-            await updateDoc(doc(db, 'bankAccounts', primaryAcc.id), {
-              currentBalance: increment(delta),
-              updatedAt: clientTimestamp(),
-              versionTimestamp: Date.now(),
-              lastModifiedByDeviceId: getDeviceId(),
-            });
-          }
-          await setDoc(doc(db, 'bankTransactions', txId), {
-            id: txId,
-            ownerId: user!.uid,
-            bankAccountId: primaryAcc.id,
-            date: close.date.slice(0, 30),
-            description: `Daily Z-Report Register Cash Deposit (${close.date}) — Ref ${closeId}`.slice(0, 500),
-            type: 'credit',
-            amount: closeDeposit,
-            category: 'sales_cash_deposit',
-            referenceId: closeId,
-            isReconciled: true,
-            notes: `Reconciled with Z-Report physical cash drawer count for ${close.date}`.slice(0, 1000),
-            createdAt: clientTimestamp(),
-            updatedAt: clientTimestamp(),
-            versionTimestamp: Date.now(),
-            lastModifiedByDeviceId: getDeviceId(),
-          });
-        } else if (oldDeposit > 0 && closeDeposit === 0) {
-          await deleteDoc(doc(db, 'bankTransactions', txId)).catch(() => {});
-        }
-      },
-      existingClose ? OperationType.UPDATE : OperationType.CREATE,
+      undefined,
+      existingClose ? 'write' : 'write',
       `dailyCloses/${closeId}`,
       syncId,
       user?.uid,
@@ -1723,12 +1458,8 @@ export default function App() {
     }
 
     await safeWrite(
-      async () => {
-        await deleteDoc(doc(db, 'dailyCloses', id));
-        const txId = sanitizeId(`btx-close-${id}`);
-        await deleteDoc(doc(db, 'bankTransactions', txId)).catch(() => {});
-      },
-      OperationType.DELETE,
+      undefined,
+      'write',
       `dailyCloses/${id}`,
       syncId,
       user?.uid
@@ -1811,24 +1542,8 @@ export default function App() {
 
     // 4. Online Firestore write
     await safeWrite(
-      async () => {
-        if (targetAcc) {
-          await setDoc(
-            doc(db, 'bankAccounts', targetAcc.id),
-            FirestoreMappers.bankAccountToFirestore(targetAcc, user!.uid),
-            { merge: true }
-          );
-          const deltaAmount = tx.type === 'credit' ? tx.amount : -tx.amount;
-          await updateDoc(doc(db, 'bankAccounts', targetAcc.id), {
-            currentBalance: increment(deltaAmount),
-            updatedAt: clientTimestamp(),
-            versionTimestamp: Date.now(),
-            lastModifiedByDeviceId: getDeviceId(),
-          });
-        }
-        await setDoc(doc(db, 'bankTransactions', txId), payload);
-      },
-      OperationType.CREATE,
+      undefined,
+      'write',
       `bankTransactions/${txId}`,
       syncId,
       user?.uid,
@@ -1951,62 +1666,8 @@ export default function App() {
     // 6. Online Firestore atomic batch writes
     if (user) {
       await safeWrite(
-        async () => {
-          // Ensure parent bank account exists in Firestore first
-          const targetAccData = updatedAccounts.find((a) => a.id === primaryTargetId);
-          if (targetAccData) {
-            const accDocRef = doc(db, 'bankAccounts', primaryTargetId);
-            await setDoc(
-              accDocRef,
-              {
-                id: targetAccData.id,
-                ownerId: user.uid,
-                name: targetAccData.name.slice(0, 150),
-                bankName: targetAccData.bankName.slice(0, 150),
-                accountNumberMasked: targetAccData.accountNumberMasked.slice(0, 50),
-                type: targetAccData.type,
-                currentBalance: targetAccData.currentBalance,
-                currency: (targetAccData.currency || 'ETB').slice(0, 20),
-                color: (targetAccData.color || '#ea580c').slice(0, 40),
-                createdAt: clientTimestamp(),
-                updatedAt: clientTimestamp(),
-              },
-              { merge: true }
-            );
-          }
-
-          // Write transactions in batches of 400 (under the 500 Firestore limit)
-          const CHUNK_SIZE = 400;
-          for (let i = 0; i < sanitizedTxs.length; i += CHUNK_SIZE) {
-            const chunk = sanitizedTxs.slice(i, i + CHUNK_SIZE);
-            const batch = writeBatch(db);
-
-            for (const tx of chunk) {
-              const docRef = doc(db, 'bankTransactions', tx.id);
-              const txPayload: Record<string, unknown> = {
-                id: tx.id,
-                ownerId: user.uid,
-                bankAccountId: tx.bankAccountId,
-                date: tx.date.slice(0, 30),
-                description: tx.description.slice(0, 500),
-                type: tx.type,
-                amount: tx.amount,
-                category: tx.category.slice(0, 60),
-                isReconciled: tx.isReconciled,
-                notes: (tx.notes || '').slice(0, 1000),
-                createdAt: clientTimestamp(),
-                updatedAt: clientTimestamp(),
-              };
-              if (tx.referenceId) {
-                txPayload.referenceId = tx.referenceId.slice(0, 128);
-              }
-              batch.set(docRef, txPayload);
-            }
-
-            await batch.commit();
-          }
-        },
-        OperationType.CREATE,
+      undefined,
+        'write',
         `bankTransactions/batch-${sanitizedTxs.length}`,
         `sync-batch-${Date.now()}`,
         user.uid
@@ -2087,40 +1748,8 @@ export default function App() {
     }
 
     await safeWrite(
-      async () => {
-        await updateDoc(doc(db, 'bankTransactions', txId), updatePayload);
-        if (oldTx) {
-          const oldSigned = oldTx.type === 'credit' ? oldTx.amount : -oldTx.amount;
-          const newSigned = updatedTx.type === 'credit' ? updatedTx.amount : -updatedTx.amount;
-
-          if (oldTx.bankAccountId === newBankId) {
-            const diff = newSigned - oldSigned;
-            const acc = bankAccounts.find((a) => a.id === newBankId);
-            if (acc && diff !== 0) {
-              await updateDoc(doc(db, 'bankAccounts', acc.id), {
-                currentBalance: increment(diff),
-                updatedAt: clientTimestamp(),
-              });
-            }
-          } else {
-            const oldAcc = bankAccounts.find((a) => a.id === oldTx.bankAccountId);
-            const newAcc = bankAccounts.find((a) => a.id === newBankId);
-            if (oldAcc) {
-              await updateDoc(doc(db, 'bankAccounts', oldAcc.id), {
-                currentBalance: increment(-oldSigned),
-                updatedAt: clientTimestamp(),
-              });
-            }
-            if (newAcc) {
-              await updateDoc(doc(db, 'bankAccounts', newAcc.id), {
-                currentBalance: increment(newSigned),
-                updatedAt: clientTimestamp(),
-              });
-            }
-          }
-        }
-      },
-      OperationType.UPDATE,
+      undefined,
+      'write',
       `bankTransactions/${txId}`,
       syncId,
       user?.uid,
@@ -2158,20 +1787,8 @@ export default function App() {
     }
 
     await safeWrite(
-      async () => {
-        await deleteDoc(doc(db, 'bankTransactions', id));
-        if (oldTx) {
-          const acc = bankAccounts.find((a) => a.id === oldTx.bankAccountId);
-          if (acc) {
-            const signed = oldTx.type === 'credit' ? oldTx.amount : -oldTx.amount;
-            await updateDoc(doc(db, 'bankAccounts', acc.id), {
-              currentBalance: increment(-signed),
-              updatedAt: clientTimestamp(),
-            });
-          }
-        }
-      },
-      OperationType.DELETE,
+      undefined,
+      'write',
       `bankTransactions/${id}`,
       syncId,
       user?.uid
@@ -2231,26 +1848,8 @@ export default function App() {
     setPendingSyncCount(getPendingSyncMutations(user?.uid).length);
 
     await safeWrite(
-      async () => {
-        await updateDoc(doc(db, 'bankTransactions', txId), updatePayload);
-        if (referenceId) {
-          const matchedSale = sales.find((s) => s.id === referenceId);
-          if (matchedSale) {
-            await updateDoc(doc(db, 'sales', matchedSale.id), {
-              isReconciledWithBank: true,
-              updatedAt: clientTimestamp(),
-            });
-          }
-          const matchedPurchase = purchases.find((p) => p.id === referenceId);
-          if (matchedPurchase) {
-            await updateDoc(doc(db, 'purchases', matchedPurchase.id), {
-              isReconciledWithBank: true,
-              updatedAt: clientTimestamp(),
-            });
-          }
-        }
-      },
-      OperationType.UPDATE,
+      undefined,
+      'write',
       `bankTransactions/${txId}`,
       syncId,
       user?.uid
@@ -2346,45 +1945,8 @@ export default function App() {
 
     // 3. Online Firestore write
     await safeWrite(
-      async () => {
-        await updateDoc(doc(db, 'bankAccounts', fromAcc.id), {
-          currentBalance: increment(-amount),
-          updatedAt: clientTimestamp(),
-        });
-        await updateDoc(doc(db, 'bankAccounts', toAcc.id), {
-          currentBalance: increment(amount),
-          updatedAt: clientTimestamp(),
-        });
-        await setDoc(doc(db, 'bankTransactions', debitId), {
-          id: debitId,
-          ownerId: activeUid,
-          bankAccountId: fromAcc.id,
-          date: todayStr,
-          description: `Transfer Out: ${note}`.slice(0, 500),
-          type: 'debit',
-          amount: Number(amount) || 0,
-          category: 'transfer',
-          isReconciled: true,
-          notes: note.slice(0, 1000),
-          createdAt: clientTimestamp(),
-          updatedAt: clientTimestamp(),
-        });
-        await setDoc(doc(db, 'bankTransactions', creditId), {
-          id: creditId,
-          ownerId: activeUid,
-          bankAccountId: toAcc.id,
-          date: todayStr,
-          description: `Transfer In: ${note}`.slice(0, 500),
-          type: 'credit',
-          amount: Number(amount) || 0,
-          category: 'transfer',
-          isReconciled: true,
-          notes: note.slice(0, 1000),
-          createdAt: clientTimestamp(),
-          updatedAt: clientTimestamp(),
-        });
-      },
-      OperationType.CREATE,
+      undefined,
+      'write',
       'bankTransactions',
       syncDebitId,
       user?.uid
@@ -2440,10 +2002,8 @@ export default function App() {
     setPendingSyncCount(getPendingSyncMutations(user?.uid).length);
 
     await safeWrite(
-      async () => {
-        await setDoc(doc(db, 'reconcilingItems', itemId), payload);
-      },
-      OperationType.CREATE,
+      undefined,
+      'write',
       `reconcilingItems/${itemId}`,
       syncId,
       user?.uid
@@ -2494,10 +2054,8 @@ export default function App() {
     setPendingSyncCount(getPendingSyncMutations(user?.uid).length);
 
     await safeWrite(
-      async () => {
-        await updateDoc(doc(db, 'reconcilingItems', itemId), payload);
-      },
-      OperationType.UPDATE,
+      undefined,
+      'write',
       `reconcilingItems/${itemId}`,
       syncId,
       user?.uid
@@ -2523,10 +2081,8 @@ export default function App() {
     setPendingSyncCount(getPendingSyncMutations(user?.uid).length);
 
     await safeWrite(
-      async () => {
-        await deleteDoc(doc(db, 'reconcilingItems', id));
-      },
-      OperationType.DELETE,
+      undefined,
+      'write',
       `reconcilingItems/${id}`,
       syncId,
       user?.uid
@@ -2603,33 +2159,8 @@ export default function App() {
 
     // 5. Online Firestore write
     await safeWrite(
-      async () => {
-        if (targetAcc) {
-          const nextBalance = isCredit
-            ? targetAcc.currentBalance + item.amount
-            : targetAcc.currentBalance - item.amount;
-          await updateDoc(doc(db, 'bankAccounts', targetAcc.id), {
-            currentBalance: nextBalance,
-            updatedAt: clientTimestamp(),
-          });
-        }
-        await setDoc(doc(db, 'bankTransactions', txId), {
-          id: txId,
-          ownerId: activeUid,
-          bankAccountId: sanitizeId(item.bankAccountId),
-          date: item.date.slice(0, 30),
-          description: `BRS Book Adjustment (${item.referenceNumber}): ${item.partyOrDescription}`.slice(0, 500),
-          type: isCredit ? 'credit' : 'debit',
-          amount: Number(item.amount) || 0,
-          category: isCredit ? 'sale_deposit' : 'bank_fee',
-          isReconciled: true,
-          notes: `Posted from Bank Reconciliation Statement (${item.referenceNumber})`.slice(0, 1000),
-          createdAt: clientTimestamp(),
-          updatedAt: clientTimestamp(),
-        });
-        await deleteDoc(doc(db, 'reconcilingItems', item.id));
-      },
-      OperationType.WRITE,
+      undefined,
+      'write',
       'bankTransactions',
       syncTxId,
       user?.uid
@@ -2698,10 +2229,8 @@ export default function App() {
     setPendingSyncCount(getPendingSyncMutations(user?.uid).length);
 
     await safeWrite(
-      async () => {
-        await setDoc(doc(db, 'brsStatements', statementId), payload);
-      },
-      OperationType.CREATE,
+      undefined,
+      'write',
       `brsStatements/${statementId}`,
       syncId,
       user?.uid
@@ -2765,10 +2294,8 @@ export default function App() {
     setPendingSyncCount(getPendingSyncMutations(user?.uid).length);
 
     await safeWrite(
-      async () => {
-        await updateDoc(doc(db, 'brsStatements', statementId), payload);
-      },
-      OperationType.UPDATE,
+      undefined,
+      'write',
       `brsStatements/${statementId}`,
       syncId,
       user?.uid
@@ -2794,10 +2321,8 @@ export default function App() {
     setPendingSyncCount(getPendingSyncMutations(user?.uid).length);
 
     await safeWrite(
-      async () => {
-        await deleteDoc(doc(db, 'brsStatements', id));
-      },
-      OperationType.DELETE,
+      undefined,
+      'write',
       `brsStatements/${id}`,
       syncId,
       user?.uid
@@ -2854,10 +2379,8 @@ export default function App() {
     setPendingSyncCount(getPendingSyncMutations(user?.uid).length);
 
     await safeWrite(
-      async () => {
-        await setDoc(doc(db, 'bankAccounts', accountId), payload);
-      },
-      OperationType.CREATE,
+      undefined,
+      'write',
       `bankAccounts/${accountId}`,
       syncId,
       user?.uid,
@@ -2915,10 +2438,8 @@ export default function App() {
     setPendingSyncCount(getPendingSyncMutations(user?.uid).length);
 
     await safeWrite(
-      async () => {
-        await updateDoc(doc(db, 'bankAccounts', accountId), payload);
-      },
-      OperationType.UPDATE,
+      undefined,
+      'write',
       `bankAccounts/${accountId}`,
       syncId,
       user?.uid,
@@ -2954,18 +2475,8 @@ export default function App() {
     setPendingSyncCount(getPendingSyncMutations(user?.uid).length);
 
     await safeWrite(
-      async () => {
-        await deleteDoc(doc(db, 'bankAccounts', id));
-        const relatedTx = bankTransactions.filter((t) => t.bankAccountId === id);
-        for (const tx of relatedTx) {
-          await deleteDoc(doc(db, 'bankTransactions', tx.id));
-        }
-        const relatedItems = reconcilingItems.filter((i) => i.bankAccountId === id);
-        for (const item of relatedItems) {
-          await deleteDoc(doc(db, 'reconcilingItems', item.id));
-        }
-      },
-      OperationType.DELETE,
+      undefined,
+      'write',
       `bankAccounts/${id}`,
       syncId,
       user?.uid
@@ -3021,19 +2532,8 @@ export default function App() {
     setPendingSyncCount(getPendingSyncMutations(user?.uid).length);
 
     await safeWrite(
-      async () => {
-        const settingsRef = doc(db, 'settings', user!.uid);
-        if (hasSettingsDoc) {
-          await updateDoc(settingsRef, payload);
-        } else {
-          await setDoc(settingsRef, {
-            ...payload,
-            ownerId: user!.uid,
-            createdAt: itemCreatedAt,
-          });
-        }
-      },
-      OperationType.WRITE,
+      undefined,
+      'write',
       `settings/${user?.uid}`,
       syncId,
       user?.uid,
